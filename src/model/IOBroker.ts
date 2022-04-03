@@ -10,6 +10,7 @@ export async function getIOBrokerValues() {
                 "0_userdata.0.internal.ae_internal_measure_day", //current measure day
                 "0_userdata.0.internal.ae_internal_measure_used_avg", //current measure day
                 "0_userdata.0.internal.ae_internal_measure_count", //current count
+                "0_userdata.0.internal.ae_internal_total_kwh",  //total kwh incl. last day
             ];
     const response = await axios.get('http://192.168.178.81:8087/getBulk/' + values.join(",") );
 
@@ -24,6 +25,8 @@ export async function getIOBrokerValues() {
     const currentDay = resp.find((e: any) => e.id === "0_userdata.0.internal.ae_internal_measure_day" )?.val || "";
     const currentAvg = resp.find((e: any) => e.id === "0_userdata.0.internal.ae_internal_measure_used_avg" )?.val || 0.0;
     const currentCount = resp.find((e: any) => e.id === "0_userdata.0.internal.ae_internal_measure_count" )?.val || 0;
+    const totalKwh = resp.find((e: any) => e.id === "0_userdata.0.internal.ae_internal_total_kwh" )?.val || 0;
+    const currentDayWh = resp.find((e: any) => e.id === "0_userdata.0.house_current_day_used_kwh" )?.val || 0;
 
     return {
         batteryStateOfCharge: batteryStateOfCharge,
@@ -33,7 +36,9 @@ export async function getIOBrokerValues() {
         overallUsedPower: overallUsage,
         currentAvg: currentAvg,
         currentCount: currentCount,
-        currentDay: currentDay
+        currentDay: currentDay,
+        totalKwh: totalKwh,
+        currentDayWh: currentDayWh
     };
 }
 

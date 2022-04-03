@@ -24,19 +24,30 @@ export async function mainLoopIteration() {
         const date = new Date( );
         const dateStr = date.toLocaleDateString('en-GB').split('/').reverse().join('');
         if ( curValSmartMeter.currentDay.toString() !== dateStr ) {
+            if ( curValSmartMeter.currentCount !== 0 ) {
+                
+            }
             curValSmartMeter.currentAvg = 0;
             curValSmartMeter.currentCount = 0;
-            axios.get(`http://192.168.178.81:8087/set/0_userdata.0.internal.ae_internal_measure_day?value=${ dateStr }`);
+
+            //update current 
+            curValSmartMeter.totalKwh = curValSmartMeter.totalKwh + curValSmartMeter.currentDayWh / 1000;
+
+            axios.get(`http://192.168.178.81:8087/set/0_userdata.0.internal.ae_internal_total_kwh?value=${ dateStr }`);
         }
         curValSmartMeter.currentAvg = ( ( curValSmartMeter.currentAvg * curValSmartMeter.currentCount ) + usedPower ) / ( curValSmartMeter.currentCount + 1 );
         curValSmartMeter.currentCount += 1;
-
+        
         axios.get(`http://192.168.178.81:8087/set/0_userdata.0.internal.ae_internal_measure_used_avg?value=${ curValSmartMeter.currentAvg }`);
         axios.get(`http://192.168.178.81:8087/set/0_userdata.0.internal.ae_internal_measure_count?value=${ curValSmartMeter.currentCount }`);
 
         //our current average of "injection" into the net is available - calculate missing hours..
         const injectionKwH = Math.round( curValSmartMeter.currentAvg * date.getHours() ) + ( curValSmartMeter.currentAvg * date.getMinutes() / 60, 0 );
         axios.get(`http://192.168.178.81:8087/set/0_userdata.0.house_current_day_used_kwh?value=${ injectionKwH }`);
+
+        const totalKwhTotal = injectionKwH / 1000 + curValSmartMeter.totalKwh;
+        axios.get(`http://192.168.178.81:8087/set/0_userdata.0.house_total_savings?value=${ totalKwhTotal * 0.33 }`);
+        axios.get(`http://192.168.178.81:8087/set/0_userdata.0.house_total_used_kwh?value=${ totalKwhTotal }`);
     } catch (err) {  }
     
     try {
