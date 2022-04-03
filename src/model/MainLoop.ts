@@ -2,6 +2,7 @@ import { CURRENT_SMART_METER_VALUES, getAEConversionData, reduceAEConversion } f
 import { CURRENT_BATTERY_TREND, CURRENT_INJECTION_MODE, CURRENT_IO_BROKER_VALUES, fillWhHistory, getIOBrokerValues, updateIOBrokerValues } from "./IOBroker";
 
 
+let lastIncreaseTimestamp = 0;
 let lastReduceTimestamp = 0;
 let counterMainIteration = 0;
 let injectionMode = CURRENT_INJECTION_MODE.DYNAMIC_INJECTION;
@@ -71,8 +72,16 @@ export async function mainLoopIteration() {
         newDynamicValue = limits.min;
     }
 
-    //we go up higher immediatly - lower we wait ~~20 seconds, just because the system is not behaving perfectly.. maybe we already jump up agan..
+    //we go up higher immediatly ( 2 seconds for plausability reasons) - lower we wait ~~20 seconds, just because the system is not behaving perfectly.. maybe we already jump up agan..
     if ( newDynamicValue > curAEConversionValues.currentReduce ) {
+        if(!lastIncreaseTimestamp) {
+            lastIncreaseTimestamp = new Date().getTime() / 1000;
+        }
+        if ( curDate - lastIncreaseTimestamp > 2 ) {
+            await mainLoopReduce( 0, newDynamicValue);
+            lastIncreaseTimestamp = null;
+            lastReduceTimestamp = null;
+        }
         await mainLoopReduce( 0, newDynamicValue);
     } else if ( newDynamicValue < curAEConversionValues.currentReduce ) {
         if(!lastReduceTimestamp) {
@@ -81,6 +90,7 @@ export async function mainLoopIteration() {
         
         if ( curDate - lastReduceTimestamp > 20 ) {
             await mainLoopReduce( 0, newDynamicValue);
+            lastReduceTimestamp = null;
             lastReduceTimestamp = null;
         }
     }
