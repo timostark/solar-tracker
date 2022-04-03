@@ -70,8 +70,8 @@ export async function mainLoopIteration() {
     } else if ( curValSmartMeter.overallUsedPower > -20 ) {
         //we have to increase our inverter power..
         let bNewReduceValue = curAEConversionValues.currentPower + curValSmartMeter.overallUsedPower + 50;
-        if ( bNewReduceValue > 510 ) {
-            bNewReduceValue = 510;
+        if ( bNewReduceValue > 500 ) {
+            bNewReduceValue = 500;
         }
         if ( bNewReduceValue > curAEConversionValues.currentReduce ) {
             console.log(`Increase from ${ curAEConversionValues.currentReduce }W to ${ bNewReduceValue }W, because overall used power is ${ curValSmartMeter.overallUsedPower }W` );
@@ -81,8 +81,8 @@ export async function mainLoopIteration() {
     } else if ( curValSmartMeter.overallUsedPower < -75 ) {
         //we have to decrease our inverter power..
         let bNewReduceValue = curAEConversionValues.currentPower + curValSmartMeter.overallUsedPower + 50;
-        if ( bNewReduceValue > 510 ) {
-            bNewReduceValue = 510;
+        if ( bNewReduceValue > 500 ) {
+            bNewReduceValue = 500;
         } else if ( bNewReduceValue < 30 ) {
             bNewReduceValue = 30;
         }
