@@ -6,7 +6,7 @@ import { getIOBrokerValues } from "./IOBroker";
 let lastReduceTimestamp = 0;
 
 export async function mainLoopIteration() {
-    const [ curValSmartMeter, curAEConversionValues] = await Promise.all([getIOBrokerValues(), getAEConversionData()]);
+    let [ curValSmartMeter, curAEConversionValues] = await Promise.all([getIOBrokerValues(), getAEConversionData()]);
 
     try {
         axios.get(`http://192.168.178.81:8087/set/0_userdata.0.ae_conversion_0_power?value=${ Math.round( curAEConversionValues.currentPower )}`);
@@ -18,7 +18,25 @@ export async function mainLoopIteration() {
         const overAllConsumption = Math.round( curValSmartMeter.overallUsedPower + curAEConversionValues.currentPower );
         axios.get(`http://192.168.178.81:8087/set/0_userdata.0.house_real_consumption?value=${ overAllConsumption }`);   
         
-        axios.get(`http://192.168.178.81:8087/set/0_userdata.0.house_used_consumption?value=${ Math.round( curAEConversionValues.currentPower > overAllConsumption ? overAllConsumption : curAEConversionValues.currentPower )}`);   
+        const usedPower = Math.round( curAEConversionValues.currentPower > overAllConsumption ? overAllConsumption : curAEConversionValues.currentPower );
+        axios.get(`http://192.168.178.81:8087/set/0_userdata.0.house_used_consumption?value=${ usedPower }`);   
+
+        const date = new Date( );
+        const dateStr = date.toLocaleDateString('en-GB').split('/').reverse().join('');
+        if ( curValSmartMeter.currentDay.toString() !== dateStr ) {
+            curValSmartMeter.currentAvg = 0;
+            curValSmartMeter.currentCount = 0;
+            axios.get(`http://192.168.178.81:8087/set/0_userdata.0.internal.ae_internal_measure_day?value=${ dateStr }`);
+        }
+        curValSmartMeter.currentAvg = ( ( curValSmartMeter.currentAvg * curValSmartMeter.currentCount ) + usedPower ) / ( curValSmartMeter.currentCount + 1 );
+        curValSmartMeter.currentCount += 1;
+
+        axios.get(`http://192.168.178.81:8087/set/0_userdata.0.internal.ae_internal_measure_used_avg?value=${ curValSmartMeter.currentAvg }`);
+        axios.get(`http://192.168.178.81:8087/set/0_userdata.0.internal.ae_internal_measure_count?value=${ curValSmartMeter.currentCount }`);
+
+        //our current average of "injection" into the net is available - calculate missing hours..
+        const injectionKwH = Math.round( curValSmartMeter.currentAvg * date.getHours() ) + ( curValSmartMeter.currentAvg * date.getMinutes() / 60, 0 );
+        axios.get(`http://192.168.178.81:8087/set/0_userdata.0.house_current_day_used_kwh?value=${ injectionKwH }`);
     } catch (err) {  }
     
     try {
