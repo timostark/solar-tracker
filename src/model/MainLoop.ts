@@ -24,6 +24,8 @@ export async function mainLoopIteration() {
     try {
     } catch (err) {  }
 
+    return;
+
     const curDate = new Date().getTime() / 1000;
 
     //we do not want moe changes than every 60 seconds as aeconversion simply takes a while to react..
