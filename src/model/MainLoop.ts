@@ -14,14 +14,16 @@ export async function mainLoopIteration() {
         axios.get(`http://192.168.178.81:8087/set/0_userdata.0.ae_conversion_0_efficency?value=${ Math.round( curAEConversionValues.currentEfficiency * 100 )}`);
         axios.get(`http://192.168.178.81:8087/set/0_userdata.0.victron_battery_power?value=${ Math.round( curValSmartMeter.batteryPower )}`);
         axios.get(`http://192.168.178.81:8087/set/0_userdata.0.house_consumption_bigger_zero?value=${ Math.round( curValSmartMeter.overallUsedPower > 0 ? curValSmartMeter.overallUsedPower : 0 )}`);   
-        axios.get(`http://192.168.178.81:8087/set/0_userdata.0.house_real_consumption?value=${ Math.round( curValSmartMeter.overallUsedPower + curAEConversionValues.currentPower )}`);   
+        
+        const overAllConsumption = Math.round( curValSmartMeter.overallUsedPower + curAEConversionValues.currentPower );
+        axios.get(`http://192.168.178.81:8087/set/0_userdata.0.house_real_consumption?value=${ overAllConsumption }`);   
+        
+        axios.get(`http://192.168.178.81:8087/set/0_userdata.0.house_used_consumption?value=${ Math.round( curAEConversionValues.currentPower > overAllConsumption ? overAllConsumption : curAEConversionValues.currentPower )}`);   
     } catch (err) {  }
     
     try {
     } catch (err) {  }
 
-    return;
-    
     const curDate = new Date().getTime() / 1000;
 
     //we do not want moe changes than every 60 seconds as aeconversion simply takes a while to react..
