@@ -1,8 +1,12 @@
 import axios from "axios";
 
+export interface CURRENT_SMART_METER_VALUES {
+    currentPower: number;
+    currentReduce: number;
+    currentEfficiency: number;
+}
 
-
-export async function getAEConversionData() {
+export async function getAEConversionData() : Promise<CURRENT_SMART_METER_VALUES> {
     const response = await axios.get('http://192.168.178.80:3038/?CMD=CURRENT&DEV=ALL' );
 
     const allInverterData = response.data;
