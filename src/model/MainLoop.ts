@@ -34,6 +34,9 @@ export async function mainLoopIteration() {
     const limits = determineCurrentLimits( curAEConversionValues, curValSmartMeter );
     const curDate = new Date().getTime() / 1000;
 
+    limits.max = 150;
+    limits.min = 150;
+
     let newDynamicValue = curAEConversionValues.currentReduce;
     
     //is our current value unplausible? we are probably inside a change atm.. skip it..
