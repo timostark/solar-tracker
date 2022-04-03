@@ -1,4 +1,7 @@
+import { loadWHHistory } from "./model/IOBroker";
 import { mainLoopIteration } from "./model/MainLoop";
+
+loadWHHistory();
 
 function mainLoop() {
     setTimeout(async () => {

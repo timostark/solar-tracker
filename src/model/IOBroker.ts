@@ -1,5 +1,7 @@
 import axios from "axios";
 import { CURRENT_SMART_METER_VALUES } from "./AEConversion";
+import * as fs from 'fs';
+import { Buffer } from 'buffer';
 
 export enum CURRENT_BATTERY_TREND {
     FAST_LOWER = "FastLower",
@@ -9,7 +11,7 @@ export enum CURRENT_BATTERY_TREND {
     FAST_HIGHER = "FastHigher"
 };
 
-export enum CURRENT_INJECTION_MODE  {
+export enum CURRENT_INJECTION_MODE {
     CONSTANT_INJECTION_LOW = "Constant-Low",
     CONSTANT_INJECTION_HIGH = "Constant-High",
     DYNAMIC_INJECTION = "Dynamic"
@@ -23,11 +25,11 @@ export interface CURRENT_IO_BROKER_VALUES {
     currentDay: number;
     totalKwh: number;
     currentDayWh: number;
-    batteryTrend ?: CURRENT_BATTERY_TREND;
-    injectionMode ?: CURRENT_INJECTION_MODE;
+    batteryTrend?: CURRENT_BATTERY_TREND;
+    injectionMode?: CURRENT_INJECTION_MODE;
 }
 
-export async function getIOBrokerValues() : Promise<CURRENT_IO_BROKER_VALUES> {
+export async function getIOBrokerValues(): Promise<CURRENT_IO_BROKER_VALUES> {
     let values = ["modbus.0.inputRegisters.226.789_Solar_Charger Power", //solar power
         "modbus.0.inputRegisters.100.843_Battery_State of Charge", //% available
         "modbus.0.inputRegisters.225.261_Battery_Current", //battery current
@@ -50,8 +52,6 @@ export async function getIOBrokerValues() : Promise<CURRENT_IO_BROKER_VALUES> {
     const additionalDcOutput = resp.find((e: any) => e.id === "modbus.0.inputRegisters.100.860_DC_System Power")?.val || 0;
     const overallUsage = resp.find((e: any) => e.id === "smartmeter.0.1-0:16_7_0__255.value")?.val || 0;
     const currentDay = resp.find((e: any) => e.id === "0_userdata.0.internal.ae_internal_measure_day")?.val || "";
-    const currentAvg = resp.find((e: any) => e.id === "0_userdata.0.internal.ae_internal_measure_used_avg")?.val || 0.0;
-    const currentCount = resp.find((e: any) => e.id === "0_userdata.0.internal.ae_internal_measure_count")?.val || 0;
     const totalKwh = resp.find((e: any) => e.id === "0_userdata.0.internal.ae_internal_total_kwh")?.val || 0;
     const currentDayWh = resp.find((e: any) => e.id === "0_userdata.0.house_current_day_used_kwh")?.val || 0;
 
@@ -72,22 +72,44 @@ interface KEY_MAP {
     value: string | number;
 }
 
-let whHistory : { [hour: number] : { [ minute: number]: number } } = {};
+let whHistory: { [hour: number]: { [minute: number]: number } } = {};
+let whHistorySize = 0;
 
 export function fillWhHistory(curAEConversionValues: CURRENT_SMART_METER_VALUES, curValSmartMeter: CURRENT_IO_BROKER_VALUES) {
     const overAllConsumption = Math.round(curValSmartMeter.overallUsedPower + curAEConversionValues.currentPower);
     const usedPower = Math.round(curAEConversionValues.currentPower > overAllConsumption ? overAllConsumption : curAEConversionValues.currentPower);
     const date = new Date();
 
-    if(!whHistory[date.getHours()] ) {
-        whHistory[date.getHours()]  = {};
+    if (!whHistory[date.getHours()]) {
+        whHistory[date.getHours()] = {};
     }
     whHistory[date.getHours()][date.getMinutes()] = usedPower;
 
+    whHistorySize++;
+
+    if (whHistorySize % 30 === 0) {
+        const dateStr = date.toLocaleDateString('en-GB').split('/').reverse().join('');
+
+        fs.writeFile(dateStr + ".json", JSON.stringify(whHistory), (err) => {
+            return;
+        });
+    }
 }
 
-export async function updateIOBrokerValues(curAEConversionValues: CURRENT_SMART_METER_VALUES, curValSmartMeter: CURRENT_IO_BROKER_VALUES ) {
-    let allValues : KEY_MAP[] = [];
+export function loadWHHistory() {
+    const date = new Date();
+    const dateStr = date.toLocaleDateString('en-GB').split('/').reverse().join('');
+
+    try {
+        const data = fs.readFileSync(dateStr + ".json");
+        whHistory = JSON.parse(data.toString());
+    } catch (err) { }
+}
+
+
+
+export async function updateIOBrokerValues(curAEConversionValues: CURRENT_SMART_METER_VALUES, curValSmartMeter: CURRENT_IO_BROKER_VALUES) {
+    let allValues: KEY_MAP[] = [];
 
     const overAllConsumption = Math.round(curValSmartMeter.overallUsedPower + curAEConversionValues.currentPower);
     const usedPower = Math.round(curAEConversionValues.currentPower > overAllConsumption ? overAllConsumption : curAEConversionValues.currentPower);
@@ -101,7 +123,7 @@ export async function updateIOBrokerValues(curAEConversionValues: CURRENT_SMART_
         //update current 
         curValSmartMeter.totalKwh = curValSmartMeter.totalKwh + curValSmartMeter.currentDayWh / 1000;
         allValues.push({ key: "0_userdata.0.house_total_used_kwh", value: dateStr });
-        allValues.push( {key: "0_userdata.0.ae_internal_total_kwh", value: curValSmartMeter.totalKwh });
+        allValues.push({ key: "0_userdata.0.ae_internal_total_kwh", value: curValSmartMeter.totalKwh });
     }
 
     //calc value per hour..
@@ -111,7 +133,7 @@ export async function updateIOBrokerValues(curAEConversionValues: CURRENT_SMART_
         let kwLastMinute = -1;
         Object.getOwnPropertyNames(whHistory[hour]).forEach((minuteStr) => {
             const minute = parseInt(minuteStr);
-            kwInHour = kwInHour + whHistory[hour][minute] * ( minute - kwLastMinute );
+            kwInHour = kwInHour + whHistory[hour][minute] * (minute - kwLastMinute);
             kwLastMinute = minute;
         });
 
@@ -124,16 +146,16 @@ export async function updateIOBrokerValues(curAEConversionValues: CURRENT_SMART_
 
     allValues.push({ key: "0_userdata.0.battery_trend", value: curValSmartMeter.batteryTrend });
     allValues.push({ key: "0_userdata.0.house_injection_mode", value: curValSmartMeter.injectionMode });
-    allValues.push({ key: "0_userdata.0.ae_conversion_0_power", value: curAEConversionValues.currentPower});
-    allValues.push({ key: "0_userdata.0.ae_conversion_0_limit", value: curAEConversionValues.currentReduce});
-    allValues.push({ key: "0_userdata.0.ae_conversion_0_efficency", value: curAEConversionValues.currentEfficiency * 100});
-    allValues.push({ key: "0_userdata.0.victron_battery_power", value: curValSmartMeter.batteryPower});
-    allValues.push({ key: "0_userdata.0.house_consumption_bigger_zero", value: curValSmartMeter.overallUsedPower > 0 ? curValSmartMeter.overallUsedPower : 0});
-    allValues.push({ key: "0_userdata.0.house_real_consumption", value: overAllConsumption});
-    allValues.push({ key: "0_userdata.0.house_used_consumption", value: usedPower});
-    allValues.push({ key: "0_userdata.0.house_current_day_used_kwh", value: injectionKwH});
-    allValues.push({ key: "0_userdata.0.house_total_savings", value: totalKwhTotal * 0.33});
+    allValues.push({ key: "0_userdata.0.ae_conversion_0_power", value: curAEConversionValues.currentPower });
+    allValues.push({ key: "0_userdata.0.ae_conversion_0_limit", value: curAEConversionValues.currentReduce });
+    allValues.push({ key: "0_userdata.0.ae_conversion_0_efficency", value: curAEConversionValues.currentEfficiency * 100 });
+    allValues.push({ key: "0_userdata.0.victron_battery_power", value: curValSmartMeter.batteryPower });
+    allValues.push({ key: "0_userdata.0.house_consumption_bigger_zero", value: curValSmartMeter.overallUsedPower > 0 ? curValSmartMeter.overallUsedPower : 0 });
+    allValues.push({ key: "0_userdata.0.house_real_consumption", value: overAllConsumption });
+    allValues.push({ key: "0_userdata.0.house_used_consumption", value: usedPower });
+    allValues.push({ key: "0_userdata.0.house_current_day_used_kwh", value: injectionKwH });
+    allValues.push({ key: "0_userdata.0.house_total_savings", value: totalKwhTotal * 0.33 });
     allValues.push({ key: "0_userdata.0.house_total_used_kwh", value: totalKwhTotal });
 
-    await axios.get(`http://192.168.178.81:8087/setBulk?${ allValues.map((e) => `${e.key}=${e.value}`).join("&") }`);
+    await axios.get(`http://192.168.178.81:8087/setBulk?${allValues.map((e) => `${e.key}=${e.value}`).join("&")}`);
 }
