@@ -40,6 +40,15 @@ export async function mainLoopIteration() {
         currentReduceTarget = curAEConversionValues.currentReduce;
     }
 
+    //hard: avoid to make our battery empty..
+    if ( curValSmartMeter.batteryStateOfCharge < 8 ) {
+        //reset to zero..
+        currentReduceTarget = 0;
+
+        await mainLoopReduce( 0, 0 );
+        return;
+    }
+
     //get possible low and high value based on our injection mode..
     const limits = determineCurrentLimits( curAEConversionValues, curValSmartMeter );
     
@@ -130,12 +139,9 @@ export async function mainLoopIteration() {
     //we go up higher immediatly ( 2 seconds for plausability reasons) - lower we wait ~~20 seconds, just because the system is not behaving perfectly.. maybe we already jump up agan..
     if ( newLimitValue > curAEConversionValues.currentReduce ) {
         currentReduceTarget = newLimitValue;
-
         await mainLoopReduce( 0, newLimitValue);
     } else if ( newLimitValue < curAEConversionValues.currentReduce ) {
         currentReduceTarget = newLimitValue;
-
-
         await mainLoopReduce( 0, newLimitValue);
     }
     
