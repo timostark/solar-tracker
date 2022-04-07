@@ -25,6 +25,7 @@ export interface CURRENT_IO_BROKER_VALUES {
     currentDay: number;
     totalKwh: number;
     currentDayWh: number;
+    maxChargeCurrent: number;
     batteryTrend?: CURRENT_BATTERY_TREND;
     injectionMode?: CURRENT_INJECTION_MODE;
 }
@@ -40,6 +41,7 @@ export async function getIOBrokerValues(): Promise<CURRENT_IO_BROKER_VALUES> {
         "0_userdata.0.internal.ae_internal_measure_used_avg", //current measure day
         "0_userdata.0.internal.ae_internal_measure_count", //current count
         "0_userdata.0.internal.ae_internal_total_kwh",  //total kwh incl. last day
+        "modbus.0.inputRegisters.100.2705_Max_charge current dvcc", //max total solar amperes
     ];
     const response = await axios.get('http://192.168.178.81:8087/getBulk/' + values.join(","));
 
@@ -54,6 +56,7 @@ export async function getIOBrokerValues(): Promise<CURRENT_IO_BROKER_VALUES> {
     const currentDay = resp.find((e: any) => e.id === "0_userdata.0.internal.ae_internal_measure_day")?.val || "";
     const totalKwh = resp.find((e: any) => e.id === "0_userdata.0.internal.ae_internal_total_kwh")?.val || 0;
     const currentDayWh = resp.find((e: any) => e.id === "0_userdata.0.house_current_day_used_kwh")?.val || 0;
+    const maxChargeCurrent = resp.find((e: any) => e.id === "modbus.0.inputRegisters.100.2705_Max_charge current dvcc")?.val || 50;
 
     return {
         batteryStateOfCharge: batteryStateOfCharge,
@@ -63,7 +66,8 @@ export async function getIOBrokerValues(): Promise<CURRENT_IO_BROKER_VALUES> {
         overallUsedPower: overallUsage,
         currentDay: currentDay,
         totalKwh: totalKwh,
-        currentDayWh: currentDayWh
+        currentDayWh: currentDayWh,
+        maxChargeCurrent: maxChargeCurrent
     };
 }
 
@@ -72,25 +76,32 @@ interface KEY_MAP {
     value: string | number;
 }
 
-let whHistory: { [hour: number]: { [minute: number]: number } } = {};
 let whHistorySize = 0;
+let whHistoryTotal: { [hour: number]: { [minute: number]: { used: number, total: number, count: number } } } = {};
 
 export function fillWhHistory(curAEConversionValues: CURRENT_SMART_METER_VALUES, curValSmartMeter: CURRENT_IO_BROKER_VALUES) {
     const overAllConsumption = Math.round(curValSmartMeter.overallUsedPower + curAEConversionValues.currentPower);
     const usedPower = Math.round(curAEConversionValues.currentPower > overAllConsumption ? overAllConsumption : curAEConversionValues.currentPower);
     const date = new Date();
 
-    if (!whHistory[date.getHours()]) {
-        whHistory[date.getHours()] = {};
+    if (!whHistoryTotal[date.getHours()]) {
+        whHistoryTotal[date.getHours()] = {};
     }
-    whHistory[date.getHours()][date.getMinutes()] = usedPower;
+    let cur = whHistoryTotal[date.getHours()][date.getMinutes()];
+    if (!cur) {
+        whHistoryTotal[date.getHours()][date.getMinutes()] = { used: usedPower, total: curAEConversionValues.currentPower, count: 1 };
+    } else {
+        cur.total = Math.round((cur.total * cur.count + curAEConversionValues.currentPower) / (cur.count + 1));
+        cur.used = Math.round((cur.used * cur.count + usedPower) / (cur.count + 1));
+        cur.count = cur.count + 1;
+    }
 
     whHistorySize++;
 
     if (whHistorySize % 30 === 0) {
         const dateStr = date.toLocaleDateString('en-GB').split('/').reverse().join('');
 
-        fs.writeFile(dateStr + ".json", JSON.stringify(whHistory), (err) => {
+        fs.writeFile(dateStr + "_total.json", JSON.stringify(whHistoryTotal), (err) => {
             return;
         });
     }
@@ -101,8 +112,8 @@ export function loadWHHistory() {
     const dateStr = date.toLocaleDateString('en-GB').split('/').reverse().join('');
 
     try {
-        const data = fs.readFileSync(dateStr + ".json");
-        whHistory = JSON.parse(data.toString());
+        const dataTotal = fs.readFileSync(process.cwd() + "/" + dateStr + "_total.json");
+        whHistoryTotal = JSON.parse(dataTotal.toString());
     } catch (err) { }
 }
 
@@ -118,29 +129,34 @@ export async function updateIOBrokerValues(curAEConversionValues: CURRENT_SMART_
     //get current hour saved on the backend - if our hour changed, we can push our current value foreward (if that makes sense?)
     const dateStr = date.toLocaleDateString('en-GB').split('/').reverse().join('');
     if (curValSmartMeter.currentDay.toString() !== dateStr) {
-        whHistory = {};
+        whHistoryTotal = {};
 
         //update current 
         curValSmartMeter.totalKwh = curValSmartMeter.totalKwh + curValSmartMeter.currentDayWh / 1000;
-        allValues.push({ key: "0_userdata.0.house_total_used_kwh", value: dateStr });
+        allValues.push({ key: "0_userdata.0.internal.ae_internal_measure_day", value: dateStr });
         allValues.push({ key: "0_userdata.0.ae_internal_total_kwh", value: curValSmartMeter.totalKwh });
     }
 
     //calc value per hour..
     let injectionKwH = 0;
-    Object.getOwnPropertyNames(whHistory).forEach((hour) => {
+    injectionKwH = Math.round(injectionKwH);
+
+    //total injection kwh..
+    let injectionKwHTotal = 0;
+    Object.getOwnPropertyNames(whHistoryTotal).forEach((hour) => {
         let kwInHour = 0;
+        let kwInHourTotal = 0;
         let kwLastMinute = -1;
-        Object.getOwnPropertyNames(whHistory[hour]).forEach((minuteStr) => {
+        Object.getOwnPropertyNames(whHistoryTotal[hour]).forEach((minuteStr) => {
             const minute = parseInt(minuteStr);
-            kwInHour = kwInHour + whHistory[hour][minute] * (minute - kwLastMinute);
+            kwInHour = kwInHour + whHistoryTotal[hour][minute].used * (minute - kwLastMinute);
+            kwInHourTotal = kwInHourTotal + whHistoryTotal[hour][minute].total * (minute - kwLastMinute);
             kwLastMinute = minute;
         });
 
         injectionKwH += kwInHour / 60;
+        injectionKwHTotal += kwInHourTotal / 60;
     });
-
-    injectionKwH = Math.round(injectionKwH);
 
     const totalKwhTotal = injectionKwH / 1000 + curValSmartMeter.totalKwh;
 
@@ -154,6 +170,7 @@ export async function updateIOBrokerValues(curAEConversionValues: CURRENT_SMART_
     allValues.push({ key: "0_userdata.0.house_real_consumption", value: overAllConsumption });
     allValues.push({ key: "0_userdata.0.house_used_consumption", value: usedPower });
     allValues.push({ key: "0_userdata.0.house_current_day_used_kwh", value: injectionKwH });
+    allValues.push({ key: "0_userdata.0.house_current_day_injected_kwh", value: injectionKwHTotal });
     allValues.push({ key: "0_userdata.0.house_total_savings", value: totalKwhTotal * 0.33 });
     allValues.push({ key: "0_userdata.0.house_total_used_kwh", value: totalKwhTotal });
 
