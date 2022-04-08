@@ -201,8 +201,6 @@ function controlInjectionMode(curValSmartMeter: CURRENT_IO_BROKER_VALUES) : CURR
                 return CURRENT_INJECTION_MODE.CONSTANT_INJECTION_LOW;
             }
             return CURRENT_INJECTION_MODE.DYNAMIC_INJECTION;
-        } else if ( curValSmartMeter.batteryStateOfCharge < 50 && ( batteryTrend === CURRENT_BATTERY_TREND.LOWER || solarPowerAverageLastHour < 400 ) ) {
-            return CURRENT_INJECTION_MODE.DYNAMIC_INJECTION;
         } else if ( curValSmartMeter.batteryStateOfCharge < 90 && batteryTrend === CURRENT_BATTERY_TREND.FAST_LOWER && solarPowerAverageLastHour < 300 ) {
             return CURRENT_INJECTION_MODE.DYNAMIC_INJECTION;
         }
@@ -221,7 +219,7 @@ function controlInjectionMode(curValSmartMeter: CURRENT_IO_BROKER_VALUES) : CURR
         if ( curValSmartMeter.batteryStateOfCharge < 20 ) {
             return CURRENT_INJECTION_MODE.CONSTANT_INJECTION_LOW;
         }
-        if ( curValSmartMeter.batteryStateOfCharge > 35 && batteryTrend === CURRENT_BATTERY_TREND.FAST_HIGHER && solarPowerAverageLastHour > 500 ) {
+        if ( curValSmartMeter.batteryStateOfCharge > 35 && batteryTrend === CURRENT_BATTERY_TREND.FAST_HIGHER && solarPowerAverageLastHour > 1000 ) {
             return CURRENT_INJECTION_MODE.CONSTANT_INJECTION_HIGH;
         }
         if ( curValSmartMeter.batteryStateOfCharge > 80 && batteryTrend === CURRENT_BATTERY_TREND.HIGHER ) {
