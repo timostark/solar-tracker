@@ -1,7 +1,5 @@
-import { CURRENT_SMART_METER_VALUES, getAEConversionData, reduceAEConversion } from "./AEConversion";
 import { CURRENT_BATTERY_TREND, CURRENT_INJECTION_MODE, CURRENT_IO_BROKER_VALUES, fillWhHistory, getIOBrokerValues, updateIOBrokerValues, VE_BUS_STATE } from "./IOBroker";
 import setCurrentTargetValue, { disableOvervoltageFeedIn } from "./maxSolarPower";
-import controlMaxSolarPower from "./maxSolarPower";
 
 
 let lastIncreaseTimestamp = 0;
