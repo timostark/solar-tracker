@@ -41,6 +41,10 @@ export interface CURRENT_IO_BROKER_VALUES {
     overallUsedPower: number;
     currentDay: number;
     totalKwh: number;
+    actualMultiPlusPower: number;
+    gridValue: number;
+    gridSoldToday: number;
+    gridSoldTotal: number;
     currentDayWh: number;
     criticalACLoads: number;
     maxChargeCurrent: number;
@@ -58,16 +62,22 @@ export async function getIOBrokerValues(): Promise<CURRENT_IO_BROKER_VALUES> {
         "modbus.0.inputRegisters.225.261_Battery_Current", //battery current
         "modbus.0.holdingRegisters.227.65_Overvoltage_Feed In",//overvoltage feed in
         "modbus.0.inputRegisters.225.259_Battery_voltage", //battery voltage
-        "modbus.0.inputRegisters.100.860_DC_System Power", //additional dc output
-        "modbus.0.inputRegisters.100.820_Grid_L1", //input power (= actual values put into grid..)
+        "smartmeter.0.1-0:1_8_0__255.value", //grid-value (zählerstand)
         "modbus.0.holdingRegisters.227.37_Ess_Setpoint", //target value..
         "modbus.0.inputRegisters.227.31_VE_Bus_state", //veBusState
+        "0_userdata.0.house_grid_sold_total", //grid sold total
+        "0_userdata.0.house_grid_current_day_sold", //grid sold today
         "smartmeter.0.1-0:16_7_0__255.value", //overall usage in the house,
+        "smartmeter.0.1-0:56_7_0__255.value", //phase for injecting power..
         "0_userdata.0.internal.ae_internal_measure_day", //current measure day
         "0_userdata.0.internal.ae_internal_measure_used_avg", //current measure day
         "0_userdata.0.internal.ae_internal_measure_count", //current count
         "0_userdata.0.internal.ae_internal_total_kwh",  //total kwh incl. last day
-        "modbus.0.inputRegisters.100.817_AC_Consumption L1", //Critical Loads on AC Out
+        "modbus.0.inputRegisters.227.12_Input_Power 1", //actual power by multiplus
+        "modbus.0.inputRegisters.100.817_AC_Consumption L1", //Critical Loads on AC Out (phase 1) ++ load on pase 1
+        "modbus.0.inputRegisters.100.818_AC_Consumption L2", //loads on phase 2
+        "modbus.0.inputRegisters.100.819_AC_Consumption L3", //loads on phase 2
+        "modbus.0.inputRegisters.227.23_Output_Power 1", //critical
         "modbus.0.inputRegisters.100.2705_Max_charge current dvcc", //max total solar amperes
     ];
     const response = await axios.get('http://192.168.178.81:8087/getBulk/' + values.join(","));
@@ -78,15 +88,27 @@ export async function getIOBrokerValues(): Promise<CURRENT_IO_BROKER_VALUES> {
     const batteryStateOfCharge = resp.find((e: any) => e.id === "modbus.0.inputRegisters.100.843_Battery_State of Charge")?.val || 0;
     const batteryCurrent = resp.find((e: any) => e.id === "modbus.0.inputRegisters.225.261_Battery_Current")?.val || 0;
     const batteryVoltage = resp.find((e: any) => e.id === "modbus.0.inputRegisters.225.259_Battery_voltage")?.val || 0;
-    const additionalDcOutput = resp.find((e: any) => e.id === "modbus.0.inputRegisters.100.860_DC_System Power")?.val || 0;
     const overallUsage = resp.find((e: any) => e.id === "smartmeter.0.1-0:16_7_0__255.value")?.val || 0;
     const currentDay = resp.find((e: any) => e.id === "0_userdata.0.internal.ae_internal_measure_day")?.val || "";
     const totalKwh = resp.find((e: any) => e.id === "0_userdata.0.internal.ae_internal_total_kwh")?.val || 0;
-    let currentMultiPlusPower = resp.find((e: any) => e.id === "modbus.0.inputRegisters.100.820_Grid_L1")?.val || 0;
+    let currentMultiPlusPowerL1 = resp.find((e: any) => e.id === "modbus.0.inputRegisters.100.817_AC_Consumption L1")?.val || 0;
+    let currentMultiPlusPowerL2 = resp.find((e: any) => e.id === "modbus.0.inputRegisters.100.818_AC_Consumption L2")?.val || 0;
+    let currentMultiPlusPowerL3 = resp.find((e: any) => e.id === "modbus.0.inputRegisters.100.819_AC_Consumption L3")?.val || 0;
+    let actualMultiPlusPower = resp.find((e: any) => e.id === "modbus.0.inputRegisters.227.12_Input_Power 1")?.val || 0;
+    let phase1GridValue = resp.find((e: any) => e.id === "smartmeter.0.1-0:56_7_0__255.value")?.val || 0;
+    let gridValue = resp.find((e: any) => e.id === "smartmeter.0.1-0:1_8_0__255.value")?.val || 0;
+
+
+
+
+    let currentMultiPlusPower = currentMultiPlusPowerL1 - phase1GridValue;
     let currentMultiPlusTarget = resp.find((e: any) => e.id === "modbus.0.holdingRegisters.227.37_Ess_Setpoint")?.val || 0;
     let currentVeBusState = resp.find((e: any) => e.id === "modbus.0.inputRegisters.227.31_VE_Bus_state")?.val || 8;
-    let criticalACLoads = resp.find((e: any) => e.id === "modbus.0.inputRegisters.100.817_AC_Consumption L1")?.val || 0;
+    let criticalACLoads = resp.find((e: any) => e.id === "modbus.0.inputRegisters.227.23_Output_Power 1")?.val || 0;
     let overvoltageFeedIn = resp.find((e: any) => e.id === "modbus.0.holdingRegisters.227.65_Overvoltage_Feed In")?.val || 0;
+
+    let gridSoldTotal = resp.find((e: any) => e.id === "0_userdata.0.house_grid_sold_total")?.val || 0;
+    let gridSoldToday = resp.find((e: any) => e.id === "0_userdata.0.house_grid_current_day_sold")?.val || 0;
 
     if (criticalACLoads < 0) {
         criticalACLoads = criticalACLoads * -1;
@@ -94,7 +116,7 @@ export async function getIOBrokerValues(): Promise<CURRENT_IO_BROKER_VALUES> {
 
     if (currentVeBusState === VE_BUS_STATE.PASSTHRU) {
         currentMultiPlusTarget = 0;
-        currentMultiPlusPower = 0;
+        currentMultiPlusPowerL1 = 0;
     }
 
     const currentDayWh = resp.find((e: any) => e.id === "0_userdata.0.house_current_day_used_kwh")?.val || 0;
@@ -106,19 +128,26 @@ export async function getIOBrokerValues(): Promise<CURRENT_IO_BROKER_VALUES> {
     if (currentMultiPlusTarget < 0) {
         currentMultiPlusTarget = currentMultiPlusTarget * -1;
     }
+    if (actualMultiPlusPower < 0) {
+        actualMultiPlusPower = actualMultiPlusPower * -1;
+    }
 
     return {
         batteryStateOfCharge: batteryStateOfCharge,
         solarPower: solarPower,
         batteryPower: batteryCurrent * batteryVoltage,
-        dcPower: additionalDcOutput,
+        dcPower: 0,
         overallUsedPower: overallUsage,
         overvoltageFeedIn: overvoltageFeedIn,
         currentDay: currentDay,
+        actualMultiPlusPower: actualMultiPlusPower,
         currentPower: currentMultiPlusPower,
         currentEssTarget: currentMultiPlusTarget,
         totalKwh: totalKwh,
+        gridValue: gridValue,
         currentDayWh: currentDayWh,
+        gridSoldTotal: gridSoldTotal,
+        gridSoldToday: gridSoldToday,
         criticalACLoads: criticalACLoads,
         vebusState: currentVeBusState,
         maxChargeCurrent: maxChargeCurrent
@@ -192,6 +221,10 @@ export async function updateIOBrokerValues(curValSmartMeter: CURRENT_IO_BROKER_V
         curValSmartMeter.totalKwh = curValSmartMeter.totalKwh + curValSmartMeter.currentDayWh / 1000;
         allValues.push({ key: "0_userdata.0.internal.ae_internal_measure_day", value: dateStr });
         allValues.push({ key: "0_userdata.0.ae_internal_total_kwh", value: curValSmartMeter.totalKwh });
+
+        curValSmartMeter.gridSoldTotal = curValSmartMeter.gridSoldToday + curValSmartMeter.gridSoldTotal;
+
+        allValues.push({ key: "0_userdata.0.house_grid_sold_total", value: curValSmartMeter.gridSoldTotal });
     }
 
     //calc value per hour..
@@ -257,6 +290,13 @@ export async function updateIOBrokerValues(curValSmartMeter: CURRENT_IO_BROKER_V
     allValues.push({ key: "0_userdata.0.house_current_day_injected_kwh", value: injectionKwHTotal });
     allValues.push({ key: "0_userdata.0.house_total_savings", value: totalKwhTotal * 0.33 });
     allValues.push({ key: "0_userdata.0.house_total_used_kwh", value: totalKwhTotal });
+
+    curValSmartMeter.gridSoldToday = (injectionKwHTotal - injectionKwH) / 1000;
+    allValues.push({ key: "0_userdata.0.house_grid_current_day_sold", value: curValSmartMeter.gridSoldToday });
+    allValues.push({ key: "0_userdata.0.house_grid_sold_current", value: curValSmartMeter.gridSoldToday + curValSmartMeter.gridSoldTotal });
+    allValues.push({ key: "0_userdata.0.house_grid_bought_total", value: curValSmartMeter.gridValue - 1074 }); //1074 is where we are starting..
+
+
 
     await axios.get(`http://192.168.178.81:8087/setBulk?${allValues.map((e) => `${e.key}=${e.value}`).join("&")}`);
 }

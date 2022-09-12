@@ -20,7 +20,7 @@ let globalIncreaseValue = false;
 let globalRestrictionMax = null;
 let globalRestrictionMode: CURRENT_INJECTION_MODE = null;
 
-const minValueForConstantHighMode = 570;
+const minValueForConstantHighMode = 500;
 const overallMaxValue = 1100;
 
 
@@ -43,9 +43,9 @@ export async function mainLoopIteration() {
     fillWhHistory(curValSmartMeter);
 
     try {
-        if (counterMainIteration % 5 === 0) {
-            await updateIOBrokerValues(curValSmartMeter);
-        }
+        //if (counterMainIteration % 5 === 0) {
+        await updateIOBrokerValues(curValSmartMeter);
+        //}
     } catch (err) { }
     counterMainIteration++;
 
@@ -97,13 +97,13 @@ export async function mainLoopIteration() {
 
     //sanity check (2): After adjusting the value sometimes aeconversion just needs a little time to follow it..
     //we wont send an additional adjustment before the current one is not respected..
-    if (curValSmartMeter.vebusState !== VE_BUS_STATE.PASSTHRU) {
+    /*if (curValSmartMeter.vebusState !== VE_BUS_STATE.PASSTHRU) {
         if (curValSmartMeter.currentPower > curValSmartMeter.currentEssTarget * 1.02 && Math.abs(curValSmartMeter.currentPower - curValSmartMeter.currentEssTarget) > 5) {
             return;
         } else if (curValSmartMeter.currentPower < curValSmartMeter.currentEssTarget * 0.8 && Math.abs(curValSmartMeter.currentPower - curValSmartMeter.currentEssTarget) > 5) {
             return;
         }
-    }
+    }*/
 
 
     if (curValSmartMeter.overallUsedPower >= -50) {
@@ -124,7 +124,7 @@ export async function mainLoopIteration() {
         lastIncreaseTimestamp = null;
 
         //we either waited for 5 seconds, or our increase value is >= 100 --> go ahead..
-        let newIncreaseValue = getNextValidPowerValueFor(curValSmartMeter.currentPower + curValSmartMeter.overallUsedPower);
+        let newIncreaseValue = getNextValidPowerValueFor(curValSmartMeter.actualMultiPlusPower + curValSmartMeter.overallUsedPower);
         if (newIncreaseValue > overallMaxValue) {
             newIncreaseValue = overallMaxValue;
         }
@@ -144,7 +144,7 @@ export async function mainLoopIteration() {
         currentlyInReduceMode = true;
         lastReduceTimestamp = null;
 
-        let newReduceValue = getNextValidPowerValueFor(curValSmartMeter.currentPower + curValSmartMeter.overallUsedPower);
+        let newReduceValue = getNextValidPowerValueFor(curValSmartMeter.actualMultiPlusPower + curValSmartMeter.overallUsedPower);
         if (newReduceValue > overallMaxValue) {
             newReduceValue = overallMaxValue;
         } else if (newReduceValue < 30) {
@@ -293,7 +293,11 @@ function controlInjectionMode(curValSmartMeter: CURRENT_IO_BROKER_VALUES): CURRE
 
 function determineCurrentLimits(curValSmartMeter: CURRENT_IO_BROKER_VALUES) {
     if (curValSmartMeter.injectionMode === CURRENT_INJECTION_MODE.CONSTANT_INJECTION_HIGH) {
-        const minPower = curValSmartMeter.solarPower < 150 ? 150 : curValSmartMeter.solarPower;
+        let minPower = curValSmartMeter.solarPower < 150 ? 150 : curValSmartMeter.solarPower;
+
+        if (curValSmartMeter.batteryStateOfCharge > 98) {
+            minPower = minValueForConstantHighMode;
+        }
         return {
             min: minValueForConstantHighMode > minPower ? minPower : minValueForConstantHighMode,
             max: overallMaxValue
@@ -333,7 +337,7 @@ function determineCurrentLimits(curValSmartMeter: CURRENT_IO_BROKER_VALUES) {
 }
 
 function getNextValidPowerValueFor(val: number) {
-    //we are always jumping in 50 steps..
+    //we are always jumping in 25er steps..
     let adjustedVal = (Math.floor(val / 50) + 1) * 50;
     return adjustedVal;
 }
